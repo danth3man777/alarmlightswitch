@@ -1,121 +1,132 @@
-import React, { useEffect, useState } from "react";
-import { initializeApp } from "firebase/app";
-import {
-  getDatabase,
-  ref,
-  set,
-  onValue,
-} from "firebase/database";
-
-// Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyBjfFdLeQw5pGXNoulfEUbYCEpdD3Sti2o",
-  authDomain: "illum-alarm.firebaseapp.com",
-  databaseURL: "https://illum-alarm-default-rtdb.firebaseio.com",
-  projectId: "illum-alarm",
-  storageBucket: "illum-alarm.firebasestorage.app",
-  messagingSenderId: "701600396394",
-  appId: "1:701600396394:web:b27e865fe3db7a6c84c613",
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+import React, { useState, useEffect } from "react";
+import { database, ref, set, onValue } from "./firebase";
+import "./App.css";
 
 function App() {
-  const [currentTime, setCurrentTime] = useState("");
   const [lightState, setLightState] = useState(false);
   const [alarmHour, setAlarmHour] = useState("7");
   const [alarmMinute, setAlarmMinute] = useState("00");
-  const [alarmPeriod, setAlarmPeriod] = useState("AM");
+  const [alarmAmPm, setAlarmAmPm] = useState("AM");
+  const [buzzerDuration, setBuzzerDuration] = useState(3);
 
-  // Update time every second
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      let hours = now.getHours();
-      let minutes = now.getMinutes();
+    const lightRef = ref(database, "lightState");
+    const alarmRef = ref(database, "alarmTime");
+    const durationRef = ref(database, "buzzerDuration");
 
-      const ampm = hours >= 12 ? "PM" : "AM";
-      hours = hours % 12 || 12;
-      const timeStr = `${hours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
-      setCurrentTime(timeStr);
-    }, 1000);
+    onValue(lightRef, (snapshot) => {
+      setLightState(snapshot.val());
+    });
 
-    return () => clearInterval(interval);
-  }, []);
-
-  // Sync lightState from Firebase
-  useEffect(() => {
-    const stateRef = ref(db, "lightState");
-    onValue(stateRef, (snapshot) => {
-      const value = snapshot.val();
-      if (value !== null) {
-        setLightState(value);
+    onValue(alarmRef, (snapshot) => {
+      const fullTime = snapshot.val();
+      if (fullTime) {
+        const [time, ampm] = fullTime.split(" ");
+        const [hour, minute] = time.split(":");
+        setAlarmHour(hour);
+        setAlarmMinute(minute);
+        setAlarmAmPm(ampm);
       }
+    });
+
+    onValue(durationRef, (snapshot) => {
+      setBuzzerDuration(snapshot.val());
     });
   }, []);
 
-  // Write light state to Firebase
-  const toggleLight = (state) => {
-    set(ref(db, "lightState"), state)
-      .then(() => {
-        console.log("lightState set to:", state);
-      })
-      .catch((error) => {
-        console.error("Failed to set lightState:", error);
-      });
+  const handleToggleLight = () => {
+    set(ref(database, "lightState"), !lightState);
   };
 
-  // Write alarm time to Firebase
-  const handleAlarmSet = () => {
-    const formattedTime = `${alarmHour}:${alarmMinute} ${alarmPeriod}`;
-    set(ref(db, "alarmTime"), formattedTime)
-      .then(() => {
-        alert(`Alarm set for ${formattedTime}`);
-      })
-      .catch((error) => {
-        console.error("Failed to set alarmTime:", error);
-      });
+  const handleAlarmTimeChange = (hour, minute, ampm) => {
+    setAlarmHour(hour);
+    setAlarmMinute(minute);
+    setAlarmAmPm(ampm);
+    const formatted = `${hour}:${minute} ${ampm}`;
+    set(ref(database, "alarmTime"), formatted);
+  };
+
+  const handleDurationChange = (e) => {
+    const duration = parseInt(e.target.value, 10);
+  
+    if (!isNaN(duration) && duration > 0) {
+      setBuzzerDuration(duration);
+      set(ref(database, "buzzerDuration"), duration);
+    }
   };
 
   return (
-    <div style={{ textAlign: "center", paddingTop: "2rem" }}>
-      <h1>Illum Alarm Control</h1>
-      <p>Current Time: {currentTime}</p>
+    <div className="App" style={{ textAlign: "center", padding: "20px" }}>
+      <h1>🕹️ Illum Alarm Control Panel</h1>
 
-      <div style={{ margin: "1rem" }}>
-        <button onClick={() => toggleLight(true)}>Turn On</button>
-        <button onClick={() => toggleLight(false)}>Turn Off</button>
-        <p>Manual Light State: {lightState ? "ON" : "OFF"}</p>
-      </div>
+      <button onClick={handleToggleLight} style={{ marginBottom: "20px" }}>
+        {lightState ? "Turn Off" : "Turn On"}
+      </button>
 
-      <div style={{ margin: "1rem" }}>
-        <h3>Set Alarm Time</h3>
-        <div style={{ display: "flex", justifyContent: "center", gap: "0.5rem" }}>
-          <select value={alarmHour} onChange={(e) => setAlarmHour(e.target.value)}>
-            {[...Array(12)].map((_, i) => (
-              <option key={i + 1} value={i + 1}>
-                {i + 1}
+      <div style={{ marginBottom: "20px" }}>
+        <label style={{ display: "block", marginBottom: "8px" }}>
+          ⏰ Set Alarm Time:
+        </label>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: "10px",
+            alignItems: "center",
+          }}
+        >
+          <select
+            value={alarmHour}
+            onChange={(e) =>
+              handleAlarmTimeChange(e.target.value, alarmMinute, alarmAmPm)
+            }
+          >
+            {[...Array(12)].map((_, i) => {
+              const hour = (i + 1).toString();
+              return (
+                <option key={hour} value={hour}>
+                  {hour}
+                </option>
+              );
+            })}
+          </select>
+
+          <select
+            value={alarmMinute}
+            onChange={(e) =>
+              handleAlarmTimeChange(alarmHour, e.target.value, alarmAmPm)
+            }
+          >
+            {Array.from({ length: 60 }, (_, i) =>
+              i.toString().padStart(2, "0")
+            ).map((min) => (
+              <option key={min} value={min}>
+                {min}
               </option>
             ))}
           </select>
 
-          <select value={alarmMinute} onChange={(e) => setAlarmMinute(e.target.value)}>
-            {[...Array(60)].map((_, i) => (
-              <option key={i} value={i.toString().padStart(2, "0")}>
-                {i.toString().padStart(2, "0")}
-              </option>
-            ))}
-          </select>
-
-          <select value={alarmPeriod} onChange={(e) => setAlarmPeriod(e.target.value)}>
+          <select
+            value={alarmAmPm}
+            onChange={(e) =>
+              handleAlarmTimeChange(alarmHour, alarmMinute, e.target.value)
+            }
+          >
             <option value="AM">AM</option>
             <option value="PM">PM</option>
           </select>
-
-          <button onClick={handleAlarmSet}>Set Alarm</button>
         </div>
+      </div>
+
+      <div>
+        <label>🔊 Buzzer Duration (seconds): </label>
+        <input
+          type="number"
+          value={buzzerDuration}
+          onChange={handleDurationChange}
+          min={1}
+          max={20}
+        />
       </div>
     </div>
   );
